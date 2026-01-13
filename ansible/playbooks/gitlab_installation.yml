@@ -1,6 +1,7 @@
 ---
 - name: Server configuration
   hosts: gitlab
-  rolse:
+  become: yes
+  roles:
   - docker_installation
   - gitlab_configuration
