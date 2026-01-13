@@ -1,3 +1,66 @@
 #SPDX-License-Identifier: MIT-0
 ---
 # tasks file for gitlab_configuration
+- name: Copy Docker daemon configuration
+  copy:
+    src: daemon.json
+    dest: /etc/docker/daemon.json
+    owner: root
+    group: root
+    mode: '0644'
+  register: docker_config_result
+
+- name: Restart Docker to apply DNS settings
+  service:
+    name: docker
+    state: restarted
+  when: docker_config_result.changed
+
+- name: Create a directory for GitLab
+  file:
+    path: "/srv/gitlab"
+    state: directory
+    mode: '0755'
+
+- name: Copy docker-compose.yml
+  copy:
+    src: "docker-compose.yml"
+    dest: "/srv/gitlab/docker-compose.yml"
+    mode: '0644'
+
+- name: Pull GitLab image (heavy task)
+  shell: "docker pull gitlab/gitlab-ce:latest"
+  async: 1800
+  poll: 15
+  register: pull_out
+  until: pull_out.rc == 0
+  retries: 5
+
+- name: Run Docker Compose
+  shell: "docker compose up -d"
+  args:
+    chdir: "/srv/gitlab"
+  register: compose_out
+  changed_when: "'Started' in compose_out.stdout or 'Created' in compose_out.stdout"
+
+- name: Wait for initial root password file to exist
+  wait_for:
+    path: /srv/gitlab/config/initial_root_password
+    state: present
+    msg: "Waiting for GitLab to generate the root password (this can take 1-3 minutes)..."
+    timeout: 300
+- name: Read initial root password
+  slurp:
+    src: /srv/gitlab/config/initial_root_password
+  register: root_password_b64
+
+- name: Display GitLab Root Password
+  debug:
+    msg: 
+      - "----------------------------------------------------------"
+      - "GITLAB IS STARTING UP (it may take a few more minutes)"
+      - "URL: http://{{ ansible_host | default(inventory_hostname) }}:8929"
+      - "Login: root"
+      - "Temporary Password: {{ root_password_b64['content'] | b64decode | regex_search('Password:\\s*(.*)', '\\1') | first }}"
+      - "----------------------------------------------------------"
+      - "IMPORTANT: This file will be deleted in 24 hours!"

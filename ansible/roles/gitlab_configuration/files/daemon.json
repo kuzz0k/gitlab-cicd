@@ -1,0 +1,8 @@
+{
+  "dns": ["8.8.8.8", "1.1.1.1"],
+  "registry-mirrors": [
+    "https://mirror.gcr.io",
+    "https://daocloud.io",
+    "https://c.163.com"
+  ]
+}
