@@ -1,0 +1,6 @@
+---
+- name: Server configuration
+  hosts: gitlab
+  rolse:
+  - docker_installation
+  - gitlab_configuration
