@@ -5,3 +5,4 @@
   roles:
     - rsync
     - docker_installation
+    - secure
