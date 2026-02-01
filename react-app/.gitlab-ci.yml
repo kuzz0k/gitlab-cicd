@@ -1,0 +1,57 @@
+stages:
+  - build
+  - deploy
+
+variables:
+  DOCKER_IMAGE: $CI_REGISTRY_IMAGE:$CI_COMMIT_REF_SLUG
+  PROJECT_ROOT: "/home/deploy_user/app"
+  REGISTRY_URL: "http://$CI_REGISTRY"
+
+.deploy_base:
+  stage: deploy
+  image: alpine:latest
+  tags:
+    - deploy
+  before_script:
+    - apk add --no-cache openssh-client rsync
+    - eval $(ssh-agent -s)
+    - chmod 400 "$SSH_PRIVATE_KEY" && ssh-add "$SSH_PRIVATE_KEY"
+    - mkdir -p ~/.ssh && chmod 700 ~/.ssh
+    - ssh-keyscan "$TARGET_IP" >> ~/.ssh/known_hosts
+  script:
+    - ssh deploy_user@$TARGET_IP "mkdir -p $PROJECT_ROOT"
+    - rsync -avz -e ssh .hosting/docker-compose.yml deploy_user@$TARGET_IP:$PROJECT_ROOT/
+    - |
+      ssh deploy_user@$TARGET_IP "cd $PROJECT_ROOT &&
+      echo '$CI_REGISTRY_PASSWORD' | docker login -u '$CI_REGISTRY_USER' --password-stdin $REGISTRY_URL &&
+      echo 'IMAGE_NAME=$DOCKER_IMAGE' > .env &&
+      docker compose pull &&
+      docker compose up -d --remove-orphans &&
+      sleep 5 && docker compose ps | grep 'Up' &&
+      docker image prune -f"
+
+build:
+  stage: build
+  image: docker:24.0.5
+  services:
+    - name: docker:24.0.5-dind
+      command: ["--insecure-registry=192.168.1.99:5050"]
+  tags:
+    - deploy
+  script:
+    - echo "$CI_REGISTRY_PASSWORD" | docker login -u "$CI_REGISTRY_USER" --password-stdin "$REGISTRY_URL"
+    - docker pull "$DOCKER_IMAGE" || true
+    - docker build --cache-from "$DOCKER_IMAGE" -t "$DOCKER_IMAGE" .
+    - docker push "$DOCKER_IMAGE"
+
+deploy-dev:
+  extends: .deploy_base
+  environment: dev
+  only:
+    - dev
+
+deploy-prod:
+  extends: .deploy_base
+  environment: main
+  only:
+    - main
