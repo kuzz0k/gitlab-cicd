@@ -1,28 +1,31 @@
 #SPDX-License-Identifier: MIT-0
 ---
 # tasks file for gitlab_deploy
-- name: Install rsync for deploy
-  ansible.builtin.package:
-    name: rsync
-    state: present
-
-- name: Create deploy user and ssh keys
+- name: Create environment specific SSH keys for deploy
   ansible.builtin.user:
-    name: deploy_user
+    name: "{{ deploy_username }}"
     shell: /bin/bash
     generate_ssh_key: yes
     ssh_key_bits: 4096
-    ssh_key_file: .ssh/id_rsa
-  register: deploy_user_data
+    ssh_key_file: ".ssh/id_rsa_{{ item }}"
+  loop: "{{ environments_list }}"
+  register: keys_metadata
 
-- name: Copy public key
+- name: Slurp public keys
   ansible.builtin.slurp:
-    src: "/home/deploy_user/.ssh/id_rsa.pub"
-  register: slurp_public_key
+    src: "/home/{{ deploy_username }}/.ssh/id_rsa_{{ item }}.pub"
+  loop: "{{ environments_list }}"
+  register: slurped_pub_keys
 
-- name: Save public key into facts
+- name: Save public keys into facts for other hosts
   ansible.builtin.set_fact:
-    deploy_pub_key: "{{ slurp_public_key['content'] | b64decode }}"
+    "deploy_pub_key_{{ item.item }}": "{{ item.content | b64decode }}"
+  loop: "{{ slurped_pub_keys.results }}"
   delegate_to: localhost
   delegate_facts: true
 
+- name: Instruction for manual Token saving
+  ansible.builtin.debug:
+    msg: 
+      - "keys created for: {{ environments_list | join(', ') }}"
+      - "you can find your private keys in /home/{{ deploy_username }}/.ssh/ on GitLab server."

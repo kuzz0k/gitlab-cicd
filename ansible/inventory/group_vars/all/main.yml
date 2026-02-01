@@ -1,0 +1,6 @@
+environments_list:
+  - stage
+  - prod
+# - staging
+
+deploy_username: "deploy_user"

@@ -1,3 +1,7 @@
 #SPDX-License-Identifier: MIT-0
 ---
 # handlers file for gitlab_configuration
+- name: restart docker
+  service:
+    name: docker
+    state: restarted

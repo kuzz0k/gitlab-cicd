@@ -1,66 +1,59 @@
-#SPDX-License-Identifier: MIT-0
 ---
-# tasks file for gitlab_configuration
 - name: Copy Docker daemon configuration
   copy:
     src: daemon.json
     dest: /etc/docker/daemon.json
-    owner: root
-    group: root
     mode: '0644'
-  register: docker_config_result
+  notify: restart docker
 
-- name: Restart Docker to apply DNS settings
-  service:
-    name: docker
-    state: restarted
-  when: docker_config_result.changed
+- name: Flush handlers to restart Docker immediately
+  meta: flush_handlers
 
-- name: Create a directory for GitLab
+- name: Create GitLab directory structure
   file:
-    path: "/srv/gitlab"
+    path: "/srv/gitlab/{{ item }}"
     state: directory
-    mode: '0755'
+    mode: '0750'
+  loop:
+    - config
+    - logs
+    - data
 
-- name: Copy docker-compose.yml
-  copy:
-    src: "docker-compose.yml"
-    dest: "/srv/gitlab/docker-compose.yml"
+- name: Create docker-compose.yml from template
+  template:
+    src: docker-compose.yml.j2
+    dest: /srv/gitlab/docker-compose.yml
     mode: '0644'
 
-- name: Pull GitLab image (heavy task)
-  shell: "docker pull gitlab/gitlab-ce:latest"
-  async: 1800
-  poll: 15
-  register: pull_out
-  until: pull_out.rc == 0
-  retries: 5
+- name: Deploy GitLab via Docker Compose
+  community.docker.docker_compose_v2:
+    project_src: /srv/gitlab
+    state: present
+    pull: always
 
-- name: Run Docker Compose
-  shell: "docker compose up -d"
-  args:
-    chdir: "/srv/gitlab"
-  register: compose_out
-  changed_when: "'Started' in compose_out.stdout or 'Created' in compose_out.stdout"
+- name: Wait for GitLab to be healthy (can take 2-5 minutes)
+  community.docker.docker_container_info:
+    name: gitlab
+  register: result
+  until: result.container.State.Health.Status == "healthy"
+  retries: 30
+  delay: 15
 
 - name: Wait for initial root password file to exist
   wait_for:
     path: /srv/gitlab/config/initial_root_password
     state: present
-    msg: "Waiting for GitLab to generate the root password (this can take 1-3 minutes)..."
-    timeout: 300
+    timeout: 60
+
 - name: Read initial root password
   slurp:
     src: /srv/gitlab/config/initial_root_password
   register: root_password_b64
 
-- name: Display GitLab Root Password
+- name: Display GitLab Access Info
   debug:
     msg: 
-      - "----------------------------------------------------------"
-      - "GITLAB IS STARTING UP (it may take a few more minutes)"
-      - "URL: http://{{ ansible_host | default(inventory_hostname) }}:8929"
+      - "GitLab is UP and Healthy!"
+      - "URL: http://{{ gitlab_external_url }}:{{ gitlab_http_port }}"
       - "Login: root"
-      - "Temporary Password: {{ root_password_b64['content'] | b64decode | regex_search('Password:\\s*(.*)', '\\1') | first }}"
-      - "----------------------------------------------------------"
-      - "IMPORTANT: This file will be deleted in 24 hours!"
+      - "Password: {{ root_password_b64['content'] | b64decode | regex_search('Password:\\s*(\\S+)', '\\1') | first | default('NOT_FOUND') }}"

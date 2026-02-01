@@ -1,31 +1,24 @@
 ---
-- name: Install rsync
-  ansible.builtin.package:
-    name: rsync
-    state: present
-
-- name: Create www-data group
-  ansible.builtin.group:
-    name: www-data
-    state: present
-
-- name: Create deploy_user
+- name: Create deploy_user and add to groups
   ansible.builtin.user:
-    name: deploy_user
+    name: "{{ deploy_username }}"
     shell: /bin/bash
-    groups: www-data
+    groups: 
+      - docker
+      - www-data
     append: yes
+    password: "*"
 
-- name: All authorized_keys
+- name: Install authorized_key for current environment
   ansible.builtin.authorized_key:
-    user: deploy_user
+    user: "{{ deploy_username }}"
     state: present
-    key: "{{ hostvars['localhost']['deploy_pub_key'] }}"
+    key: "{{ hostvars['localhost']['deploy_pub_key_' + env_label] }}"
 
-- name: Prepare folder for static files
+- name: Create project directory
   ansible.builtin.file:
-    path: /var/www/static_site
+    path: "/home/{{ deploy_username }}/app"
     state: directory
-    owner: deploy_user
-    group: www-data
-    mode: '0775'  
+    owner: "{{ deploy_username }}"
+    group: docker
+    mode: '0755'

@@ -1,0 +1,13 @@
+#SPDX-License-Identifier: MIT-0
+---
+# tasks file for rsync
+- name: Install rsync
+  package:
+    name: rsync
+    state: present
+  become: yes
+
+- name: Verify rsync installation
+  command: rsync --version
+  register: rsync_version
+  changed_when: false

@@ -33,8 +33,11 @@
     cmd: >
       gitlab-runner register
       --non-interactive
-      --url "http://{{ gitlab_ip }}:{{ gitlab_port }}/" 
+      --url "http://{{ hostvars[groups['gitlab'][0]]['ansible_host'] }}:{{ gitlab_http_port | default(80) }}/"
       --token "{{ gitlab_runner_token }}"
-      --executor "shell"
+      --executor "docker"
+      --docker-image "docker:24.0.5"
+      --docker-privileged
+      --docker-volumes "/certs/client"
       --description "My Ansible Project Runner"
   when: "'My Ansible Project Runner' not in runner_list.stderr"
