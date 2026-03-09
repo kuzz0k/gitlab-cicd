@@ -1,14 +1,21 @@
-resource "proxmox_virtual_environment_vm" "test_vm" {
-  name      = "test-bpg-vm"
+resource "proxmox_virtual_environment_vm" "nodes" {
+  for_each = var.virtual_machines
+
+  agent {
+    enabled = true
+    timeout = "2m"
+  }
+
+  name      = each.key
+  vm_id     = each.value.id
   node_name = "homelab"
-  vm_id     = 200
 
   cpu {
-    cores = 2
+    cores = each.value.cores
   }
 
   memory {
-    dedicated = 2048
+    dedicated = each.value.memory
   }
 
   clone {
@@ -18,7 +25,7 @@ resource "proxmox_virtual_environment_vm" "test_vm" {
   disk {
     datastore_id = "local"
     interface    = "scsi0"
-    size         = 10
+    size         = each.value.size
   }
 
   network_device {
@@ -30,7 +37,8 @@ resource "proxmox_virtual_environment_vm" "test_vm" {
 
     ip_config {
       ipv4 {
-        address = "dhcp"
+        address = each.value.ip
+        gateway = "192.168.1.254"
       }
     }
 
